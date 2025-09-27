@@ -1,302 +1,445 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <title>ROC曲线绘制工具</title>
-  <!-- 引入xlsx.js，用于读取Excel -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ROC/PR 曲线分析工具 · 增强版</title>
+  <!-- 依赖 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- 引入Plotly.js，用于绘制图表 -->
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    :root{
+      --bg:#0b1220;           /* 深色背景 */
+      --panel:#121a2b;        /* 面板 */
+      --muted:#8aa0bf;        /* 次级文字 */
+      --text:#e8eef8;         /* 主文字 */
+      --brand:#5aa9ff;        /* 品牌色 */
+      --accent:#22d3ee;       /* 强调色 */
+      --danger:#ef4444;       /* 危险色 */
+      --success:#22c55e;      /* 成功色 */
+      --warn:#f59e0b;         /* 警告色 */
+      --radius:14px;
+      --shadow:0 10px 30px rgba(0,0,0,.25);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; background:linear-gradient(120deg,#080d1a,#0b1324); color:var(--text); font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .container{max-width:1200px; margin:30px auto; padding:0 16px}
+    .header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px}
+    .title{font-size:24px; font-weight:800; letter-spacing:.2px}
+    .tag{font-size:12px; color:var(--muted)}
+    .grid{display:grid; gap:16px}
+    @media(min-width:980px){.grid{grid-template-columns:360px 1fr}}
+    .card{background:var(--panel); border:1px solid rgba(255,255,255,.06); border-radius:var(--radius); box-shadow:var(--shadow)}
+    .card .hd{padding:14px 16px; border-bottom:1px solid rgba(255,255,255,.06); display:flex; align-items:center; justify-content:space-between}
+    .card .hd h3{margin:0; font-size:16px}
+    .card .bd{padding:16px}
+    .muted{color:var(--muted)}
+    .row{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+    .btn{appearance:none; border:1px solid rgba(255,255,255,.12); background:linear-gradient(180deg, #1a2640, #141d34); color:var(--text); padding:10px 14px; border-radius:12px; cursor:pointer; transition:.2s}
+    .btn:hover{transform:translateY(-1px); border-color:rgba(255,255,255,.25)}
+    .btn.primary{background:linear-gradient(180deg, #1f3a64, #173156); border-color:#2c4f7f}
+    .btn.ghost{background:transparent}
+    .btn.success{border-color:var(--success)}
+    .btn.small{padding:6px 10px; border-radius:10px; font-size:12px}
+    .btn-group{display:flex; gap:8px; flex-wrap:wrap}
+    .file{display:block; width:100%; padding:10px; border-radius:12px; border:1px dashed rgba(255,255,255,.2); background:#0d1628}
+    label{font-size:12px; color:var(--muted)}
+    select,input[type="number"],input[type="text"]{width:100%; background:#0f1a2e; color:var(--text); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:10px}
+    input[type="range"]{width:100%}
+    .kpi{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px}
+    @media(min-width:600px){.kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    .kpi .item{background:#0e1a2e; padding:12px; border-radius:12px; border:1px solid rgba(255,255,255,.06)}
+    .kpi .item .label{font-size:12px; color:var(--muted)}
+    .kpi .item .val{font-size:18px; font-weight:700; margin-top:6px}
+    table{width:100%; border-collapse:collapse; font-size:12px}
+    th,td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.06)}
+    th{color:var(--muted); text-align:left}
+    .table-wrap{max-height:240px; overflow:auto; border-radius:12px; border:1px solid rgba(255,255,255,.06)}
+    .grid-plot{display:grid; gap:16px}
+    @media(min-width:980px){.grid-plot{grid-template-columns:1fr 1fr}}
+    .pill{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:#0f1c33; border:1px solid rgba(255,255,255,.08); font-size:12px}
+    .sep{height:1px; background:rgba(255,255,255,.06); margin:12px 0}
+    .note{font-size:12px; color:var(--muted)}
+    .cmatrix{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
+    .cmatrix .c{background:#0e1a2e; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px; text-align:center}
+    .c .big{font-size:20px; font-weight:800}
+    .footer{margin:18px 0; color:var(--muted); text-align:center; font-size:12px}
+    .faq-img{display:block; margin:10px auto; border-radius:8px; border:1px solid rgba(255,255,255,.2); max-width:100%}
+  </style>
 </head>
 <body>
-  <h2>ROC曲线绘制工具</h2>
-  
-  <!-- 上传文件格式示例 -->
-  <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px;">
-    <h3>上传Excel文件格式示例</h3>
-    <p>请确保Excel文件包含以下列：</p>
-    <ul>
-      <li><strong>文库号</strong></li>
-      <li><strong>金标准结果</strong>（包含“阳性”表示真阳，包含“阴性”表示真阴）</li>
-      <li><strong>RPM</strong>（NGS检测的reads per million值）</li>
-    </ul>
-    <p>示例数据：</p>
-    <pre>
-文库号    金标准结果    RPM
-001      阳性         1500
-002      阴性         500
-003      阳性         2000
-004      阴性         300
-    </pre>
+  <div class="container">
+    <div class="header">
+      <div>
+        <div class="title">ROC/PR 曲线分析工具 <span class="tag">增强版</span></div>
+        <div class="muted">支持 Excel/CSV、列映射、最优阈值、阈值滑块、混淆矩阵、导出曲线点、PR 曲线与 AP、可选 AUC CI。</div>
+      </div>
+      <div class="btn-group">
+        <button id="btn-faq" class="btn ghost small">说明文档</button>
+        <button id="btn-download-images" class="btn ghost small">下载图片</button>
+        <button id="btn-download-template" class="btn ghost small">下载模板</button>
+        <button id="btn-clear" class="btn ghost small">清空数据</button>
+      </div>
+    </div>
+
+    <!-- 说明文档模态框 -->
+    <div id="faq-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:999;">
+      <div style="max-width:760px; margin:50px auto; background:#121a2b; border-radius:12px; padding:20px; color:#fff; overflow:auto; max-height:80%;">
+        <h2>说明文档 / FAQ</h2>
+        <p><strong>ROC 曲线</strong>：横轴是假阳性率（1-特异性），纵轴是真阳性率（灵敏度）。AUC 反映整体分类性能。</p>
+        <p><strong>PR 曲线</strong>：横轴是召回率（Recall），纵轴是精确率（Precision）。AP 为曲线下面积。</p>
+        <p><strong>灵敏度</strong>：TP/(TP+FN)。<strong>特异性</strong>：TN/(TN+FP)。<strong>Youden 指数</strong>：敏感度+特异性-1。</p>
+        <p><strong>混淆矩阵</strong>：TP/FP/FN/TN 的统计；<strong>自助法</strong>：重复采样估计 AUC 的 95% CI。</p>
+        <hr>
+        <h3>病原体检测场景</h3>
+        <p><strong>RPM</strong>：mNGS/tNGS 中病原目标在总读段的相对丰度；阈值低→↑灵敏度/↓特异性；阈值高→↑特异性/↓灵敏度。</p>
+        <ul>
+          <li><em>结核分枝杆菌</em>：用 ROC 寻找 RPM 阈值，兼顾漏检与误报。</li>
+          <li>多病原呼吸道场景：阳性基数低，PR 曲线与 AP 更具参考价值。</li>
+          <li>血流感染：AUC 越高，越能区分感染/非感染。</li>
+        </ul>
+        <h3>图文示例</h3>
+        <img src="https://raw.githubusercontent.com/plotly/datasets/master/images/roc_demo.png" alt="ROC 示例" class="faq-img" />
+        <p>阈值低：几乎判阳（敏感度高/特异性低）；阈值高：判别严格（特异性高/敏感度低）。</p>
+        <div style="text-align:right"><button id="faq-close" class="btn small">关闭</button></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- 左侧：数据与设置 -->
+      <div class="card">
+        <div class="hd"><h3>1) 数据上传与列映射</h3><span class="pill">Excel（.xlsx/.xls）或 CSV</span></div>
+        <div class="bd">
+          <input id="file" class="file" type="file" accept=".xlsx,.xls,.csv" />
+          <div class="sep"></div>
+          <div class="row">
+            <div style="flex:1"><label>样本标识列</label><select id="col-id"></select></div>
+            <div style="flex:1"><label>金标准列（阳性/阴性 或 1/0）</label><select id="col-label"></select></div>
+            <div style="flex:1"><label>评分列（RPM）</label><select id="col-score"></select></div>
+          </div>
+          <div class="sep"></div>
+          <div class="row">
+            <button id="btn-parse" class="btn primary">解析并绘图</button>
+            <button id="btn-export-roc" class="btn">导出 ROC 点</button>
+            <button id="btn-export-pr" class="btn">导出 PR 点</button>
+          </div>
+          <div class="sep"></div>
+          <div class="table-wrap"><table id="preview"><thead></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+
+      <!-- 右侧：阈值与优化 -->
+      <div class="card">
+        <div class="hd"><h3>2) 阈值与优化</h3><span class="pill">Youden / 距(0,1)最近 / 权重</span></div>
+        <div class="bd">
+          <div class="kpi">
+            <div class="item"><div class="label">AUC</div><div id="kpi-auc" class="val">—</div></div>
+            <div class="item"><div class="label">AP（PR 面积）</div><div id="kpi-ap" class="val">—</div></div>
+            <div class="item"><div class="label">阳性数(P)</div><div id="kpi-p" class="val">—</div></div>
+            <div class="item"><div class="label">阴性数(N)</div><div id="kpi-n" class="val">—</div></div>
+          </div>
+
+          <div class="sep"></div>
+          <div class="row">
+            <button id="btn-opt-youden" class="btn success">最优阈值（Youden）</button>
+            <button id="btn-opt-closest" class="btn">最优阈值（距 0,1 最近）</button>
+            <button id="btn-opt-sens" class="btn">灵敏度优先</button>
+            <button id="btn-opt-spec" class="btn">特异性优先</button>
+          </div>
+
+          <div class="sep"></div>
+          <div class="row">
+            <div style="flex:1">
+              <label>自定义权重：α·敏感度 + β·特异性 最大化</label>
+              <div class="row">
+                <input id="w-sens" type="number" step="0.1" value="1" />
+                <input id="w-spec" type="number" step="0.1" value="1" />
+                <button id="btn-opt-weight" class="btn small">按权重优化</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+          <label>阈值滑块（基于评分/RPM）</label>
+          <input id="th-slider" type="range" min="0" max="100" step="1" value="0" />
+          <div class="row"><input id="th-value" type="number" placeholder="输入阈值" /><button id="btn-apply-th" class="btn small">应用阈值</button></div>
+
+          <div class="kpi" style="margin-top:12px">
+            <div class="item"><div class="label">敏感度</div><div id="kpi-sens" class="val">—</div></div>
+            <div class="item"><div class="label">特异性</div><div id="kpi-spec" class="val">—</div></div>
+            <div class="item"><div class="label">准确率</div><div id="kpi-acc" class="val">—</div></div>
+            <div class="item"><div class="label">F1</div><div id="kpi-f1" class="val">—</div></div>
+          </div>
+
+          <div class="sep"></div>
+          <div class="cmatrix">
+            <div class="c"><div class="label">TP</div><div id="cm-tp" class="big">—</div></div>
+            <div class="c"><div class="label">FP</div><div id="cm-fp" class="big">—</div></div>
+            <div class="c"><div class="label">FN</div><div id="cm-fn" class="big">—</div></div>
+            <div class="c"><div class="label">TN</div><div id="cm-tn" class="big">—</div></div>
+          </div>
+
+          <div class="sep"></div>
+          <div class="row">
+            <label><input type="checkbox" id="chk-ci" /> 估计 AUC 95% CI（自助法 B=200）</label>
+            <button id="btn-ci" class="btn small">计算 CI</button>
+            <div id="ci-out" class="note"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="hd"><h3>3) 可视化</h3><span class="pill">点击图例可开关曲线</span></div>
+      <div class="bd">
+        <div class="grid-plot">
+          <div><div id="roc" style="height:420px"></div></div>
+          <div><div id="pr" style="height:420px"></div></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="btn-save-png" class="btn">保存 PNG</button>
+          <button id="btn-save-svg" class="btn">保存 SVG</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">© ROC/PR 曲线分析工具 · 单文件版 · 本地离线可用</div>
   </div>
-  
-  <!-- 文件上传及绘图按钮 -->
-  <input type="file" id="file-input" accept=".xlsx, .xls" />
-  <button id="plot-btn">绘制ROC曲线</button>
-  <button id="save-btn">保存图片</button>
-  
-  <!-- ROC曲线展示 -->
-  <div id="plot" style="width:600px;height:400px;margin-top:20px;"></div>
-  <p>AUC: <span id="auc"></span></p>
 
-  <hr>
-  <!-- 自定义阳性判断条件 -->
-  <div style="border:1px solid #ccc; padding:10px; margin-top:20px;">
-    <h3>自定义阳性判断条件</h3>
-    <p>请输入一个RPM阈值来计算对应的灵敏度和特异性：</p>
-    <input type="number" id="custom-threshold" placeholder="例如：1000" />
-    <button id="calc-custom">计算指标</button>
-    <p id="custom-result"></p>
-  </div>
+<script>
+  // ======================= 全局状态 =======================
+  let RAW_ROWS = [];
+  let HEADERS = [];
+  let DATA = {id:[], label:[], score:[]};
+  let ROC = {fpr:[], tpr:[], th:[], points:[]};
+  let PRC = {recall:[], precision:[], th:[], points:[]};
+  let P = 0, N = 0;
 
-  <hr>
-  <!-- 自动选择最优阈值 -->
-  <div style="border:1px solid #ccc; padding:10px; margin-top:20px;">
-    <h3>自动选择最优阳性判断值</h3>
-    <p>请选择优化策略：</p>
-    <button id="opt-sens">灵敏度优先</button>
-    <button id="opt-spec">特异性优先</button>
-    <button id="opt-balance">兼顾灵敏度和特异性</button>
-    <p id="opt-result"></p>
-  </div>
+  // ======================= 工具函数 =======================
+  const $ = (sel)=>document.querySelector(sel);
+  const fmt = (x, d=4)=> (isFinite(x) ? Number(x).toFixed(d) : '—');
+  const downloadBlob = (content, filename, type='text/csv;charset=utf-8')=>{
+    const blob = new Blob([content], {type});
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+  }
+  function autoDetectLabel(v){
+    if(v===undefined||v===null) return null;
+    const s = String(v).trim();
+    if(/阳/.test(s) || /^pos/i.test(s)) return 1;
+    if(/阴/.test(s) || /^neg/i.test(s)) return 0;
+    if(/^1$|^true$/i.test(s)) return 1;
+    if(/^0$|^false$/i.test(s)) return 0;
+    return null;
+  }
+  function buildPreviewTable(rows){
+    const thead = $('#preview thead'); const tbody = $('#preview tbody');
+    thead.innerHTML = ''; tbody.innerHTML = '';
+    if(!rows.length) return;
+    const htr = document.createElement('tr');
+    Object.keys(rows[0]).forEach(k=>{ const th = document.createElement('th'); th.textContent = k; htr.appendChild(th); });
+    thead.appendChild(htr);
+    rows.slice(0,50).forEach(r=>{ const tr = document.createElement('tr'); Object.values(r).forEach(v=>{ const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }); tbody.appendChild(tr); });
+  }
 
-  <script>
-    // 全局变量，用于存储提取后的标签和RPM值
-    var globalLabels = [];
-    var globalScores = [];
+  // ======================= 读取文件 =======================
+  $('#file').addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f){return}
+    const name = f.name.toLowerCase();
+    if(name.endsWith('.csv')){
+      const text = await f.text();
+      const lines = text.split(/\r?\n/).filter(x=>x.trim().length>0);
+      if(!lines.length){alert('CSV 为空'); return}
+      HEADERS = lines[0].split(',');
+      RAW_ROWS = lines.slice(1).map(line=>{ const cells = line.split(','); const obj = {}; HEADERS.forEach((h,i)=>obj[h.trim()] = (cells[i]??'').trim()); return obj; });
+    }else{
+      const data = await f.arrayBuffer();
+      const wb = XLSX.read(data, {type:'array'});
+      const sh = wb.Sheets[wb.SheetNames[0]];
+      RAW_ROWS = XLSX.utils.sheet_to_json(sh, {defval:''});
+      HEADERS = Object.keys(RAW_ROWS[0]||{});
+    }
+    ['#col-id','#col-label','#col-score'].forEach(id=>{ const el=$(id); el.innerHTML=''; HEADERS.forEach(h=>{const opt=document.createElement('option'); opt.value=h; opt.textContent=h; el.appendChild(opt);}); });
+    if(HEADERS.length){
+      const idIdx = HEADERS.findIndex(h=>/文库|样本|id|sample/i.test(h)); if(idIdx>=0) $('#col-id').selectedIndex=idIdx;
+      const labelIdx = HEADERS.findIndex(h=>/金标准|label|真实|真值|truth/i.test(h)); if(labelIdx>=0) $('#col-label').selectedIndex=labelIdx;
+      const scoreIdx = HEADERS.findIndex(h=>/rpm|score|分数|值|read|signal|fluor/i.test(h)); if(scoreIdx>=0) $('#col-score').selectedIndex=scoreIdx;
+    }
+    buildPreviewTable(RAW_ROWS);
+  });
 
-    // 上传文件并处理数据
-    document.getElementById('plot-btn').addEventListener('click', function() {
-      var fileInput = document.getElementById('file-input');
-      if(fileInput.files.length === 0) {
-        alert("请先选择一个Excel文件！");
-        return;
+  // ======================= 解析与计算 =======================
+  $('#btn-parse').addEventListener('click', ()=>{
+    if(!RAW_ROWS.length){ alert('请先选择数据文件'); return }
+    const colId = $('#col-id').value; const colLabel=$('#col-label').value; const colScore=$('#col-score').value;
+    if(!colId||!colLabel||!colScore){ alert('请先完成列映射'); return }
+
+    const id=[], label=[], score=[];
+    RAW_ROWS.forEach(r=>{ const s = parseFloat(r[colScore]); const lab = autoDetectLabel(r[colLabel]); if(!isNaN(s) && lab!==null){ id.push(r[colId]); label.push(lab); score.push(s); } });
+    if(!label.length){ alert('未能提取有效的标签/评分数据'); return }
+    DATA = {id, label, score};
+    P = label.filter(x=>x===1).length; N = label.filter(x=>x===0).length;
+
+    ROC = computeROC(label, score); const auc = trapezoidAUC(ROC.fpr, ROC.tpr);
+    PRC = computePR(label, score); const ap = trapezoidAUC(PRC.recall, PRC.precision);
+
+    $('#kpi-auc').textContent = fmt(auc,4);
+    $('#kpi-ap').textContent  = fmt(ap,4);
+    $('#kpi-p').textContent   = P; $('#kpi-n').textContent = N;
+
+    $('#th-slider').min = 0; $('#th-slider').max = ROC.th.length-1; $('#th-slider').value = 0;
+    $('#th-value').value = ROC.th[0] ?? '';
+
+    drawROC(ROC, auc); drawPR(PRC, ap);
+    setThresholdByIndex(0);
+  });
+
+  function uniqueSortedDesc(arr){ return Array.from(new Set(arr)).sort((a,b)=>b-a); }
+
+  function computeROC(labels, scores){
+    const thresholds = uniqueSortedDesc(scores);
+    const fpr=[], tpr=[], th=[]; const points=[]; const P = labels.filter(x=>x===1).length; const N = labels.filter(x=>x===0).length;
+    thresholds.forEach(T=>{
+      let tp=0,fp=0,tn=0,fn=0;
+      for(let i=0;i<labels.length;i++){
+        const pred = (scores[i] >= T) ? 1 : 0;
+        if(pred===1 && labels[i]===1) tp++; else if(pred===1 && labels[i]===0) fp++; else if(pred===0 && labels[i]===1) fn++; else tn++;
       }
-      var file = fileInput.files[0];
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        var data = e.target.result;
-        var workbook = XLSX.read(data, {type: 'binary'});
-        // 默认读取第一个工作表
-        var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        var jsonData = XLSX.utils.sheet_to_json(firstSheet);
-        processData(jsonData);
-      };
-      reader.onerror = function(ex) {
-        console.error(ex);
-      };
-      reader.readAsBinaryString(file);
+      const tpr_i = tp/(tp+fn||1); const fpr_i = fp/(fp+tn||1);
+      tpr.push(tpr_i); fpr.push(fpr_i); th.push(T); points.push({T, tp,fp,tn,fn, sens:tpr_i, spec:tn/(tn+fp||1)});
     });
+    if(fpr[0]!==0 || tpr[0]!==0){ fpr.unshift(0); tpr.unshift(0); th.unshift(Infinity); points.unshift({T:Infinity,tp:0,fp:0,tn:0,fn:0,sens:0,spec:1}); }
+    if(fpr[fpr.length-1]!==1 || tpr[tpr.length-1]!==1){ fpr.push(1); tpr.push(1); th.push(-Infinity); points.push({T:-Infinity,tp:P,fp:N,tn:0,fn:0,sens:1,spec:0}); }
+    return {fpr, tpr, th, points};
+  }
 
-    // 保存图片按钮事件（调用Plotly下载图片功能）
-    document.getElementById('save-btn').addEventListener('click', function() {
-      Plotly.downloadImage('plot', {format: 'png', filename: 'ROC_curve'});
+  function computePR(labels, scores){
+    const thresholds = uniqueSortedDesc(scores);
+    const recall=[], precision=[], th=[]; const points=[]; const P = labels.filter(x=>x===1).length;
+    thresholds.forEach(T=>{
+      let tp=0,fp=0,tn=0,fn=0;
+      for(let i=0;i<labels.length;i++){
+        const pred = (scores[i] >= T) ? 1 : 0;
+        if(pred===1 && labels[i]===1) tp++; else if(pred===1 && labels[i]===0) fp++; else if(pred===0 && labels[i]===1) fn++; else tn++;
+      }
+      const rec = tp/(tp+fn||1); const pre = tp/(tp+fp||1);
+      recall.push(rec); precision.push(pre); th.push(T); points.push({T, tp,fp,tn,fn, recall:rec, precision:pre});
     });
+    if(recall[0]!==0){ recall.unshift(0); precision.unshift(1); th.unshift(Infinity); points.unshift({T:Infinity,tp:0,fp:0,tn:0,fn:P, recall:0, precision:1}); }
+    return {recall, precision, th, points};
+  }
 
-    // 处理数据：提取标签和RPM值，并绘制ROC曲线
-    function processData(data) {
-      var labels = []; // 1表示阳性，0表示阴性
-      var scores = []; // RPM值
-      data.forEach(function(row) {
-        var goldResult = row["金标准结果"];
-        var rpm = parseFloat(row["RPM"]);
-        if(isNaN(rpm)) return; // 跳过无效的RPM值
-        if(goldResult && goldResult.indexOf("阳性") !== -1) {
-          labels.push(1);
-        } else if(goldResult && goldResult.indexOf("阴性") !== -1) {
-          labels.push(0);
-        } else {
-          return;
-        }
-        scores.push(rpm);
-      });
+  function trapezoidAUC(x, y){ let area=0; for(let i=1;i<x.length;i++){ area += (x[i]-x[i-1]) * ((y[i]+y[i-1])/2); } return area; }
 
-      if(labels.length === 0) {
-        alert("未能提取有效数据！");
-        return;
-      }
+  // ======================= 绘图（高分辨率 & 绿色方框标记） =======================
+  function drawROC(roc, auc){
+    const trace  = { x: roc.fpr, y: roc.tpr, type:'scatter', mode:'lines+markers', name:`ROC (AUC=${fmt(auc,3)})` };
+    const diag   = { x:[0,1], y:[0,1], type:'scatter', mode:'lines', name:'随机 (y=x)', line:{dash:'dot'} };
+    const marker = { x:[0], y:[0], type:'scatter', mode:'markers', name:'当前阈值', marker:{size:12, symbol:'square-open', line:{width:2}, color:'#22c55e'} };
+    Plotly.newPlot('roc', [trace, diag, marker], { title:'ROC 曲线', xaxis:{title:'假阳率 FPR', range:[-0.02,1.02], automargin:true}, yaxis:{title:'真阳率 TPR', range:[-0.02,1.02], automargin:true}, legend:{orientation:'h', y:-0.25}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)' }, {displaylogo:false, toImageButtonOptions:{scale:4}});
+  }
+  function drawPR(prc, ap){
+    const trace  = { x: prc.recall, y: prc.precision, type:'scatter', mode:'lines+markers', name:`PR (AP=${fmt(ap,3)})` };
+    const marker = { x:[0], y:[0], type:'scatter', mode:'markers', name:'当前阈值', marker:{size:12, symbol:'square-open', line:{width:2}, color:'#22c55e'} };
+    Plotly.newPlot('pr',  [trace, marker], { title:'Precision-Recall 曲线', xaxis:{title:'召回率 Recall', range:[-0.02,1.02], automargin:true}, yaxis:{title:'精确率 Precision', range:[-0.02,1.02], automargin:true}, legend:{orientation:'h', y:-0.25}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)' }, {displaylogo:false, toImageButtonOptions:{scale:4}});
+  }
 
-      // 保存全局数据供后续使用
-      globalLabels = labels;
-      globalScores = scores;
+  function nearestThresholdIndex(arr, T){
+    if(!arr || !arr.length) return 0;
+    const idx = arr.indexOf(T); if(idx!==-1) return idx;
+    let best=0, bestDiff=Infinity; for(let i=0;i<arr.length;i++){ const d=Math.abs(arr[i]-T); if(d<bestDiff){bestDiff=d; best=i;} } return best;
+  }
+  function updateMarkers(T){
+    const i = nearestThresholdIndex(ROC.th, T);
+    Plotly.restyle('roc', {x:[[ROC.fpr[i]]], y:[[ROC.tpr[i]]]}, [2]);
+    const j = nearestThresholdIndex(PRC.th, T);
+    Plotly.restyle('pr',  {x:[[PRC.recall[j]]], y:[[PRC.precision[j]]]}, [1]);
+  }
 
-      var roc = computeROC(labels, scores);
-      plotROC(roc.fpr, roc.tpr);
-      var auc = computeAUC(roc.fpr, roc.tpr);
-      document.getElementById('auc').innerText = auc.toFixed(4);
+  // ======================= 阈值应用与指标 =======================
+  function metricsAtThreshold(T){
+    let tp=0,fp=0,tn=0,fn=0;
+    for(let i=0;i<DATA.label.length;i++){
+      const pred = (DATA.score[i] >= T) ? 1 : 0; const y = DATA.label[i];
+      if(pred===1 && y===1) tp++; else if(pred===1 && y===0) fp++; else if(pred===0 && y===1) fn++; else tn++;
     }
+    const sens = tp/(tp+fn || 1), spec = tn/(tn+fp || 1);
+    const acc = (tp+tn) / (tp+tn+fp+fn || 1); const prec = tp/(tp+fp || 1);
+    const f1  = (2*prec*sens)/((prec+sens)||1);
+    return {tp,fp,tn,fn,sens,spec,acc,f1};
+  }
+  function setThresholdByIndex(idx){
+    if(!ROC.th.length) return; const i = Math.max(0, Math.min(idx, ROC.th.length-1)); const T = ROC.th[i];
+    $('#th-slider').value = i; $('#th-value').value = T; applyThreshold(T);
+  }
+  function setThreshold(T){ const i = nearestThresholdIndex(ROC.th, T); setThresholdByIndex(i); }
+  function applyThreshold(T){
+    if(!isFinite(T)) return;
+    const m = metricsAtThreshold(T);
+    $('#kpi-sens').textContent = fmt(m.sens,4);
+    $('#kpi-spec').textContent = fmt(m.spec,4);
+    $('#kpi-acc').textContent  = fmt(m.acc,4);
+    $('#kpi-f1').textContent   = fmt(m.f1,4);
+    $('#cm-tp').textContent = m.tp; $('#cm-fp').textContent = m.fp; $('#cm-fn').textContent = m.fn; $('#cm-tn').textContent = m.tn;
+    updateMarkers(T);
+  }
+  $('#btn-apply-th').addEventListener('click', ()=>{ const T = Number($('#th-value').value); if(isNaN(T)){ alert('请输入有效阈值'); return } setThreshold(T); });
+  $('#th-slider').addEventListener('input', (e)=>{ setThresholdByIndex(Number(e.target.value)); });
 
-    // 计算ROC曲线数据（根据所有唯一的RPM阈值）
-    function computeROC(labels, scores) {
-      var thresholds = Array.from(new Set(scores)).sort(function(a, b) { return b - a; });
-      var fpr = [];
-      var tpr = [];
-
-      var P = labels.filter(function(l) { return l === 1; }).length;
-      var N = labels.filter(function(l) { return l === 0; }).length;
-
-      thresholds.forEach(function(threshold) {
-        var tp = 0, fp = 0, fn = 0, tn = 0;
-        for(var i = 0; i < labels.length; i++){
-          var predicted = (scores[i] >= threshold) ? 1 : 0;
-          if(predicted === 1 && labels[i] === 1) tp++;
-          if(predicted === 1 && labels[i] === 0) fp++;
-          if(predicted === 0 && labels[i] === 1) fn++;
-          if(predicted === 0 && labels[i] === 0) tn++;
-        }
-        tpr.push(tp / (tp + fn));
-        fpr.push(fp / (fp + tn));
-      });
-
-      // 添加起点(0,0)和终点(1,1)（如果未包含）
-      if(fpr[0] !== 0 || tpr[0] !== 0) {
-        fpr.unshift(0);
-        tpr.unshift(0);
-      }
-      if(fpr[fpr.length - 1] !== 1 || tpr[tpr.length - 1] !== 1) {
-        fpr.push(1);
-        tpr.push(1);
-      }
-      return {fpr: fpr, tpr: tpr, thresholds: thresholds};
-    }
-
-    // 绘制ROC曲线
-    function plotROC(fpr, tpr) {
-      var trace = {
-        x: fpr,
-        y: tpr,
-        type: 'scatter',
-        mode: 'lines+markers',
-        name: 'ROC曲线'
-      };
-
-      var layout = {
-        title: 'ROC曲线',
-        xaxis: { title: '假阳率 (FPR)' },
-        yaxis: { title: '真阳率 (TPR)' },
-        width: 600,
-        height: 400
-      };
-
-      Plotly.newPlot('plot', [trace], layout);
-    }
-
-    // 计算AUC（曲线下面积，梯形积分法）
-    function computeAUC(fpr, tpr) {
-      var auc = 0;
-      for(var i = 1; i < fpr.length; i++) {
-        var xDiff = fpr[i] - fpr[i - 1];
-        var yAvg = (tpr[i] + tpr[i - 1]) / 2;
-        auc += xDiff * yAvg;
-      }
-      return auc;
-    }
-
-    // 根据给定阈值计算灵敏度和特异性
-    function calcMetrics(threshold) {
-      var tp = 0, fp = 0, fn = 0, tn = 0;
-      for(var i = 0; i < globalLabels.length; i++){
-        var predicted = (globalScores[i] >= threshold) ? 1 : 0;
-        if(predicted === 1 && globalLabels[i] === 1) tp++;
-        if(predicted === 1 && globalLabels[i] === 0) fp++;
-        if(predicted === 0 && globalLabels[i] === 1) fn++;
-        if(predicted === 0 && globalLabels[i] === 0) tn++;
-      }
-      var sensitivity = tp / (tp + fn);
-      var specificity = tn / (tn + fp);
-      return {sensitivity: sensitivity, specificity: specificity};
-    }
-
-    // 处理用户自定义阈值计算
-    document.getElementById('calc-custom').addEventListener('click', function() {
-      var threshold = parseFloat(document.getElementById('custom-threshold').value);
-      if(isNaN(threshold)) {
-        alert("请输入有效的RPM阈值！");
-        return;
-      }
-      if(globalLabels.length === 0) {
-        alert("请先上传并处理数据！");
-        return;
-      }
-      var metrics = calcMetrics(threshold);
-      document.getElementById('custom-result').innerText = "阈值：" + threshold + " 对应 灵敏度：" + metrics.sensitivity.toFixed(4) + ", 特异性：" + metrics.specificity.toFixed(4);
+  // ======================= 最优阈值策略 =======================
+  function argmax(arr){ let bestI=0,bestV=-Infinity; for(let i=0;i<arr.length;i++){ if(arr[i]>bestV){bestV=arr[i]; bestI=i;} } return bestI }
+  function bestThreshold(type, w1=1, w2=1){
+    const scores = ROC.points.map(p=>{
+      const {sens,spec} = p;
+      if(type==='youden')  return sens + spec - 1;
+      if(type==='closest') return - Math.hypot(1 - sens, 0 - (1 - spec));
+      if(type==='sens')    return sens + 1e-6*spec;
+      if(type==='spec')    return spec + 1e-6*sens;
+      if(type==='weight')  return w1*sens + w2*spec;
+      return -Infinity;
     });
+    return ROC.points[argmax(scores)];
+  }
+  $('#btn-opt-youden') .addEventListener('click', ()=>{ if(!ROC.points.length) return alert('请先解析数据'); const b=bestThreshold('youden');  setThreshold(b.T); });
+  $('#btn-opt-closest').addEventListener('click', ()=>{ if(!ROC.points.length) return alert('请先解析数据'); const b=bestThreshold('closest'); setThreshold(b.T); });
+  $('#btn-opt-sens')   .addEventListener('click', ()=>{ if(!ROC.points.length) return alert('请先解析数据'); const b=bestThreshold('sens');    setThreshold(b.T); });
+  $('#btn-opt-spec')   .addEventListener('click', ()=>{ if(!ROC.points.length) return alert('请先解析数据'); const b=bestThreshold('spec');    setThreshold(b.T); });
+  $('#btn-opt-weight') .addEventListener('click', ()=>{ if(!ROC.points.length) return alert('请先解析数据'); const w1=Number($('#w-sens').value)||1, w2=Number($('#w-spec').value)||1; const b=bestThreshold('weight', w1, w2); setThreshold(b.T); });
 
-    // 获取所有候选阈值的指标（基于上传数据中所有唯一的RPM值）
-    function getCandidates() {
-      var uniqueThresholds = Array.from(new Set(globalScores));
-      var candidates = [];
-      uniqueThresholds.forEach(function(threshold) {
-        var metrics = calcMetrics(threshold);
-        candidates.push({threshold: threshold, sensitivity: metrics.sensitivity, specificity: metrics.specificity});
-      });
-      return candidates;
-    }
+  // ======================= 导出曲线点与图片 =======================
+  $('#btn-export-roc').addEventListener('click', ()=>{ if(!ROC.fpr.length) return alert('无 ROC 数据'); const header='threshold,fpr,tpr\n'; const rows=ROC.fpr.map((x,i)=>`${ROC.th[i]},${x},${ROC.tpr[i]}`).join('\n'); downloadBlob(header+rows, 'roc_points.csv'); });
+  $('#btn-export-pr').addEventListener('click', ()=>{ if(!PRC.recall.length) return alert('无 PR 数据'); const header='threshold,recall,precision\n'; const rows=PRC.recall.map((x,i)=>`${PRC.th[i]},${x},${PRC.precision[i]}`).join('\n'); downloadBlob(header+rows, 'pr_points.csv'); });
+  function savePNGBundle(){ Plotly.downloadImage('roc', {format:'png', filename:'roc_curve', scale:4}); Plotly.downloadImage('pr', {format:'png', filename:'pr_curve', scale:4}); }
+  $('#btn-save-png').addEventListener('click', savePNGBundle); $('#btn-download-images').addEventListener('click', savePNGBundle);
+  $('#btn-save-svg').addEventListener('click', ()=>{ Plotly.downloadImage('roc', {format:'svg', filename:'roc_curve'}); Plotly.downloadImage('pr', {format:'svg', filename:'pr_curve'}); });
 
-    // 自动选择最优阈值（criteria: "sens"、"spec"、"balance"）
-    function getOptimalThreshold(criteria) {
-      var candidates = getCandidates();
-      if(candidates.length === 0) return null;
-      var optimal;
-      if(criteria === "sens") {
-        // 灵敏度优先：按灵敏度降序排序，若灵敏度相同则特异性降序
-        candidates.sort(function(a, b) {
-          if(b.sensitivity === a.sensitivity) {
-            return b.specificity - a.specificity;
-          }
-          return b.sensitivity - a.sensitivity;
-        });
-        optimal = candidates[0];
-      } else if(criteria === "spec") {
-        // 特异性优先：按特异性降序排序，若特异性相同则灵敏度降序
-        candidates.sort(function(a, b) {
-          if(b.specificity === a.specificity) {
-            return b.sensitivity - a.sensitivity;
-          }
-          return b.specificity - a.specificity;
-        });
-        optimal = candidates[0];
-      } else if(criteria === "balance") {
-        // 兼顾灵敏度和特异性：选择使 (sensitivity + specificity - 1) 最大的阈值（Youden指数）
-        candidates.sort(function(a, b) {
-          var youdenA = a.sensitivity + a.specificity - 1;
-          var youdenB = b.sensitivity + b.specificity - 1;
-          return youdenB - youdenA;
-        });
-        optimal = candidates[0];
-      }
-      return optimal;
-    }
+  // ======================= 模板与清空 =======================
+  $('#btn-download-template').addEventListener('click', ()=>{ const csv='文库号,金标准结果,RPM\n001,阳性,1500\n002,阴性,500\n003,阳性,2000\n004,阴性,300\n'; downloadBlob(csv, 'template.csv'); });
+  $('#btn-clear').addEventListener('click', ()=>{
+    RAW_ROWS=[]; HEADERS=[]; DATA={id:[],label:[],score:[]}; ROC={fpr:[],tpr:[],th:[],points:[]}; PRC={recall:[],precision:[],th:[],points:[]};
+    $('#preview thead').innerHTML=''; $('#preview tbody').innerHTML='';
+    ['kpi-auc','kpi-ap','kpi-p','kpi-n','kpi-sens','kpi-spec','kpi-acc','kpi-f1','cm-tp','cm-fp','cm-fn','cm-tn','ci-out'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='—'; });
+    Plotly.purge('roc'); Plotly.purge('pr');
+    $('#th-slider').value=0; $('#th-value').value=''; $('#file').value='';
+  });
 
-    // 绑定“灵敏度优先”按钮
-    document.getElementById('opt-sens').addEventListener('click', function() {
-      if(globalLabels.length === 0) {
-        alert("请先上传并处理数据！");
-        return;
-      }
-      var optimal = getOptimalThreshold("sens");
-      document.getElementById('opt-result').innerText = "灵敏度优先：阈值：" + optimal.threshold + "，灵敏度：" + optimal.sensitivity.toFixed(4) + "，特异性：" + optimal.specificity.toFixed(4);
-    });
+  // ======================= AUC CI (Bootstrap, B=200) =======================
+  function aucFromData(lbl, scr){ const roc = computeROC(lbl, scr); return trapezoidAUC(roc.fpr, roc.tpr); }
+  function sampleIdxWithReplacement(n){ const idx=new Array(n); for(let i=0;i<n;i++){ idx[i]=Math.floor(Math.random()*n);} return idx; }
+  $('#btn-ci').addEventListener('click', ()=>{
+    if(!$('#chk-ci').checked) { $('#ci-out').textContent='未勾选 CI 计算'; return }
+    if(!DATA.label.length) { alert('请先解析数据'); return }
+    const B=200, aucs=[]; const n=DATA.label.length;
+    for(let b=0;b<B;b++){ const pick=sampleIdxWithReplacement(n); const lbl=pick.map(i=>DATA.label[i]); const scr=pick.map(i=>DATA.score[i]); aucs.push(aucFromData(lbl, scr)); }
+    aucs.sort((a,b)=>a-b); const lo=aucs[Math.floor(0.025*B)], hi=aucs[Math.ceil(0.975*B)-1];
+    $('#ci-out').textContent = `AUC 95% CI ≈ [${fmt(lo,3)}, ${fmt(hi,3)}] (B=${B})`;
+  });
 
-    // 绑定“特异性优先”按钮
-    document.getElementById('opt-spec').addEventListener('click', function() {
-      if(globalLabels.length === 0) {
-        alert("请先上传并处理数据！");
-        return;
-      }
-      var optimal = getOptimalThreshold("spec");
-      document.getElementById('opt-result').innerText = "特异性优先：阈值：" + optimal.threshold + "，灵敏度：" + optimal.sensitivity.toFixed(4) + "，特异性：" + optimal.specificity.toFixed(4);
-    });
-
-    // 绑定“兼顾灵敏度和特异性”按钮
-    document.getElementById('opt-balance').addEventListener('click', function() {
-      if(globalLabels.length === 0) {
-        alert("请先上传并处理数据！");
-        return;
-      }
-      var optimal = getOptimalThreshold("balance");
-      document.getElementById('opt-result').innerText = "兼顾灵敏度和特异性：阈值：" + optimal.threshold + "，灵敏度：" + optimal.sensitivity.toFixed(4) + "，特异性：" + optimal.specificity.toFixed(4);
-    });
-  </script>
+  // ======================= FAQ 弹窗 =======================
+  $('#btn-faq').addEventListener('click', ()=>{ $('#faq-modal').style.display='block'; });
+  $('#faq-close').addEventListener('click', ()=>{ $('#faq-modal').style.display='none'; });
+</script>
 </body>
 </html>
